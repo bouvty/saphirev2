@@ -1,0 +1,1 @@
+import './globals.css';export const metadata={title:'Saphire',description:'Saphire secure support portal'};export default function Layout({children}:{children:React.ReactNode}){return <html lang='en'><body>{children}</body></html>}
