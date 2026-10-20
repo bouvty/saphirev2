@@ -5,6 +5,15 @@ if(!expected || !/^[0-9a-f]{64}$/.test(state)){
  if(!/^[A-Za-z0-9_-]{30,128}$/.test(state))return NextResponse.redirect('https://tickets.saphire.rip/?error=invalid_state');
  const api=(process.env.RAILWAY_API_URL||'https://saphire-python-api-production.up.railway.app').replace(/\/$/,'');
  const url=new URL('/auth/callback',api);url.searchParams.set('code',code);url.searchParams.set('state',state);
- return NextResponse.redirect(url,307);
+ try{
+  const result=await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(18000)});
+  if(result.ok){
+   const out=NextResponse.redirect(new URL('/auth/registered',req.url),303);
+   out.headers.set('Cache-Control','no-store');out.headers.set('Referrer-Policy','no-referrer');
+   return out;
+  }
+  return NextResponse.redirect(new URL('/auth/registered?error=registration',req.url),303);
+ }catch{return NextResponse.redirect(new URL('/auth/registered?error=unavailable',req.url),303)}
+
 }
 if(state.length!==expected.length||!timingSafeEqual(Buffer.from(state),Buffer.from(expected)))return NextResponse.redirect('https://tickets.saphire.rip/?error=invalid_state');const client=process.env.DISCORD_CLIENT_ID,secret=process.env.DISCORD_CLIENT_SECRET,root=(process.env.NEXT_PUBLIC_SITE_URL||'https://saphire.rip').replace(/\/$/,'');if(!client||!secret)return NextResponse.json({error:'OAuth is not configured'},{status:503});const res=await fetch('https://discord.com/api/v10/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:client,client_secret:secret,code,grant_type:'authorization_code',redirect_uri:root+'/auth/callback'}),cache:'no-store'});if(!res.ok)return NextResponse.redirect('https://tickets.saphire.rip/?error=oauth');const data=await res.json();const profile=await fetch('https://discord.com/api/v10/users/@me',{headers:{Authorization:'Bearer '+data.access_token},cache:'no-store'});if(!profile.ok)return NextResponse.redirect('https://tickets.saphire.rip/?error=profile');const u=await profile.json();const {SignJWT}=await import('jose');const sessionSecret=process.env.SESSION_SECRET;if(!sessionSecret||sessionSecret.length<32)return NextResponse.json({error:'Session signing is not configured'},{status:503});if(typeof u.id!=='string'||!/^\d{15,22}$/.test(u.id))return NextResponse.redirect('https://tickets.saphire.rip/?error=profile');const jwt=await new SignJWT({id:u.id,username:u.username}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('8h').sign(new TextEncoder().encode(sessionSecret));const target=req.cookies.get('saphire_oauth_next')?.value;const path=target?.startsWith('/tickets/')&&!target.startsWith('//')?target:'/auth/confirm';const destination=path.startsWith('/tickets/')?'https://tickets.saphire.rip'+path:new URL('/auth/confirm',root).toString();const r=NextResponse.redirect(destination);for(const key of ['saphire_oauth_state','saphire_oauth_next'])r.cookies.set(key,'',{httpOnly:true,secure:true,sameSite:'lax',path:'/',domain:'.saphire.rip',maxAge:0});r.cookies.set('saphire_session',jwt,{httpOnly:true,secure:true,sameSite:'lax',path:'/',domain:'.saphire.rip',maxAge:28800});return r}
