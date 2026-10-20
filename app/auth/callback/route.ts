@@ -3,7 +3,7 @@ if(!expected){
  // Bot registration states are persisted and consumed once by Railway.
  // Do not attempt to exchange the same Discord code twice.
  if(!/^[A-Za-z0-9_-]{30,128}$/.test(state))return NextResponse.redirect('https://tickets.saphire.rip/?error=invalid_state');
- const api=(process.env.RAILWAY_API_URL||'https://saphire-python-api-production.up.railway.app').replace(/\\/$/,'');
+ const api=(process.env.RAILWAY_API_URL||'https://saphire-python-api-production.up.railway.app').replace(/\/$/,'');
  const url=new URL('/auth/callback',api);url.searchParams.set('code',code);url.searchParams.set('state',state);
  return NextResponse.redirect(url,307);
 }
