@@ -1,0 +1,1 @@
+import './globals.css';export const metadata={title:'Saphire | Maintenance',description:'Saphire support and maintenance'};export default function RootLayout({children}:{children:React.ReactNode}){return <html lang='en'><body>{children}</body></html>}
