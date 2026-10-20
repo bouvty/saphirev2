@@ -1,0 +1,1 @@
+export default function NotFound(){return <div className="wrap"><header className="header"><a href="/" className="brand"><span className="mark">S</span>saphire.</a></header><main className="center"><div><h1 className="gradient" style={{fontSize:120,margin:0}}>404</h1><p className="sub">This page could not be found.</p><a href="/" className="btn">Back home</a></div></main></div>}
