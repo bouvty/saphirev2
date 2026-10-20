@@ -1,1 +1,1 @@
-{"name":"saphire-v2","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"15.5.28","react":"19.1.2","react-dom":"19.1.2"}}
+{"name":"saphire-v2","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"next":"15.5.28","react":"19.1.2","react-dom":"19.1.2","jose":"^6.1.0"}}
