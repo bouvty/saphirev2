@@ -1,0 +1,5 @@
+import {CheckCircle2,ShieldAlert,ArrowUpRight} from 'lucide-react';
+export default async function Registered({searchParams}:{searchParams:Promise<{error?:string}>}){
+ const p=await searchParams;const bad=Boolean(p.error);
+ return <div className="wrap"><header className="header"><a href="/" className="brand"><span className="mark">S</span>saphire.</a></header><main className="center"><section className="notice-card"><div className="notice-icon">{bad?<ShieldAlert size={30}/>:<CheckCircle2 size={30}/>}</div><span className="eyebrow">Discord account registration</span><h1>{bad?'Verification ': 'Account '}<span className="gradient">{bad?'unsuccessful.':'verified.'}</span></h1><p className="sub">{bad?'We could not complete verification. Please restart registration in the Saphire Discord bot and use a newly generated link.':'Your Discord account has been securely verified. You can close this tab and return to the Saphire Discord bot.'}</p><a className="btn" href="https://discord.gg/saphiree"><ArrowUpRight size={18}/> Return to Discord</a></section></main><footer className="footer">© 2026 Saphire</footer></div>;
+}
