@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';import {timingSafeEqual} from 'node:crypto';export async function GET(req:NextRequest){const state=req.nextUrl.searchParams.get('state'),expected=req.cookies.get('saphire_oauth_state')?.value,code=req.nextUrl.searchParams.get('code');if(!state||!code)return NextResponse.redirect('https://tickets.saphire.rip/?error=invalid_state');
-if(!expected){
+if(!expected || !/^[0-9a-f]{64}$/.test(state)){
  // Bot registration states are persisted and consumed once by Railway.
  // Do not attempt to exchange the same Discord code twice.
  if(!/^[A-Za-z0-9_-]{30,128}$/.test(state))return NextResponse.redirect('https://tickets.saphire.rip/?error=invalid_state');
