@@ -50,3 +50,7 @@ async def get_ticket(ticket_id:int,request:Request):
         val=m.get('metadata') if 'metadata' in m else {}
         return val if isinstance(val,dict) else {}
     return {'id':str(ticket['id']),'status':ticket['status'],'type':ticket['kind'],'title':ticket['kind'].replace('-',' ').title(),'owner_id':str(ticket['discord_id']),'fields':ticket['details'],'messages':[{'id':str(m['id']),'author_id':str(m['author_id']),'username':meta(m).get('username',m['author_name']),'display_name':meta(m).get('display_name',m['author_name']),'avatar':meta(m).get('avatar'),'content':m['content'],'embeds':meta(m).get('embeds',[]),'components':meta(m).get('components',[])} for m in msgs]}
+
+# SellAuth member-key issuance remains disabled until signed callback verification.
+from .sellauth_keys import router as sellauth_router
+app.include_router(sellauth_router)
