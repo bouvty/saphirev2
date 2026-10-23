@@ -9,5 +9,5 @@ const config:NextConfig={
     {key:'Strict-Transport-Security',value:'max-age=31536000; includeSubDomains'},
     {key:'X-Robots-Tag',value:'noindex, nofollow'},
     {key:'Cross-Origin-Opener-Policy',value:'same-origin'}
-  ]}]}
+  ]},{source:'/auth/:path*',headers:[{key:'Cache-Control',value:'private, no-store, max-age=0'},{key:'Referrer-Policy',value:'no-referrer'},{key:'X-Robots-Tag',value:'noindex, nofollow, noarchive'}]}]}
 };export default config;

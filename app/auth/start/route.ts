@@ -16,7 +16,10 @@ export async function GET(req:NextRequest){
    const parsed=new URL(location);
    if(parsed.protocol!=='https:'||parsed.hostname!=='discord.com')
     return NextResponse.json({error:'Registration service returned an invalid redirect'},{status:502});
-   const out=NextResponse.redirect(parsed,302);out.headers.set('Cache-Control','no-store');out.headers.set('Referrer-Policy','no-referrer');return out;
+   const out=NextResponse.redirect(parsed,302);out.headers.set('Cache-Control','no-store');out.headers.set('Referrer-Policy','no-referrer');
+   const state=parsed.searchParams.get('state')||'';
+   if(/^v2_[A-Za-z0-9_-]{43}$/.test(state))out.cookies.set('__Host-saphire_registration_state',state,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:600});
+   return out;
   }
   if(upstream.status===403)return NextResponse.json({error:'Invalid registration link. Restart the bot with the matching registration secret and request a new link.'},{status:403,headers:{'Cache-Control':'no-store'}});
   return NextResponse.json({error:'Registration service unavailable',status:upstream.status},{status:502,headers:{'Cache-Control':'no-store'}});

@@ -19,6 +19,7 @@ async def health():
             await c.fetchval('SELECT 1 FROM accounts LIMIT 1')
             await c.fetchval('SELECT 1 FROM oauth_states LIMIT 1')
             await c.fetchval('SELECT 1 FROM ticket_messages LIMIT 1')
+            await c.fetchval('SELECT 1 FROM discord_auth_requests LIMIT 1')
     except Exception:
         raise HTTPException(503,'Database unavailable')
     return {'status':'ok'}
@@ -26,11 +27,11 @@ async def health():
 async def auth_start(discord_id:int,token:str):
     expected=hmac.new(settings.bot_internal_token.encode(),str(discord_id).encode(),hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected,token):raise HTTPException(403,'Invalid invitation')
-    state=secrets.token_urlsafe(36)
+    from .auth_v2 import digest, start
+    key=secrets.token_urlsafe(32)
     async with db.pool.acquire() as c:
-        await c.execute("INSERT INTO oauth_states(state_hash,discord_id,expires_at) VALUES($1,$2,now()+interval '10 minutes')",state_hash(state),discord_id)
-    u='https://discord.com/oauth2/authorize?'+urllib.parse.urlencode({'client_id':settings.discord_client_id,'redirect_uri':settings.public_base_url.rstrip('/')+'/auth/callback','response_type':'code','scope':'identify','state':state})
-    return RedirectResponse(u)
+        await c.execute('INSERT INTO discord_auth_requests(token_hash,discord_id) VALUES($1,$2)',digest('invite',key),discord_id)
+    return await start(key)
 @app.get('/auth/callback')
 async def callback(code:str,state:str):
     async with db.pool.acquire() as c:
@@ -62,3 +63,5 @@ async def get_ticket(ticket_id:int,request:Request):
 # SellAuth member-key issuance remains disabled until signed callback verification.
 from .sellauth_keys import router as sellauth_router
 app.include_router(sellauth_router)
+from .auth_v2 import router as auth_v2_router
+app.include_router(auth_v2_router)

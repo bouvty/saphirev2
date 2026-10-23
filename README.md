@@ -16,6 +16,8 @@ For a new empty V2 database, apply the SQL files in this order: `schema.sql`, `p
 
 The October 2026 recovery preserved the incompatible empty schema under `recovery_before_v2_20261023`. Keep this archive until recovery is confirmed. Public Data API access to V2 tables is revoked; the bot and backend use Postgres credentials.
 
+For the user-bound Discord registration flow, also apply `database/discord_auth_v2.sql`. See `AUTH_V2.md` for route behavior, link expiry, callback validation, and the bot server update.
+
 ## Validation
 
 `python -m pytest railway-api/tests` checks backend readiness failures, internal authorization, and ticket metadata. The separate bot must be restarted on its own host after database recovery and then refresh actual provider stock and services.
