@@ -5,6 +5,8 @@ from fastapi.responses import RedirectResponse,HTMLResponse
 import httpx
 from . import db
 from .config import settings
+from .auth_log_filter import install as install_auth_log_filter
+install_auth_log_filter()
 @asynccontextmanager
 async def lifespan(app):
     await db.start()

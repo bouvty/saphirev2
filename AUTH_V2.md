@@ -6,7 +6,7 @@ Discord continues to return to the already registered `https://saphire.rip/auth/
 
 Only after verification succeeds does the API create a separate random success receipt and update `accounts.oauth_verified` in the same database transaction. The website sets a secure host-only receipt cookie and redirects to `/auth/v2/discord/success/<key>`. The receipt expires in five minutes; the page requires both the matching browser cookie and a server-validated receipt. It is a confirmation page, not a staff session or ticket-access credential.
 
-Failures redirect to `/auth/v2/discord/denied/`. Both result pages use the existing Saphire theme. Authentication routes have no-store and no-referrer headers; backend access logging is disabled to avoid recording secret URL paths in application logs.
+Failures redirect to `/auth/v2/discord/denied/`. Both result pages use the existing Saphire theme. Authentication routes have no-store and no-referrer headers. A focused log filter redacts auth bearer paths and OAuth query values in backend application access logs, retaining the audit event, method, and status. Other request logging stays enabled.
 
 Apply `database/discord_auth_v2.sql` before deploying this code. The database table is private, has RLS enabled, and grants no access to anon/authenticated. The bot and API must share DATABASE_URL and OAUTH_STATE_SECRET. Existing accounts and balances are unchanged.
 
