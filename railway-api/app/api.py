@@ -13,7 +13,15 @@ async def lifespan(app):
 app=FastAPI(title='Saphire V2 API',docs_url=None,redoc_url=None,lifespan=lifespan)
 def state_hash(value):return hashlib.sha256((settings.oauth_state_secret+value).encode()).hexdigest()
 @app.get('/health')
-async def health():return {'status':'ok'}
+async def health():
+    try:
+        async with db.pool.acquire() as c:
+            await c.fetchval('SELECT 1 FROM accounts LIMIT 1')
+            await c.fetchval('SELECT 1 FROM oauth_states LIMIT 1')
+            await c.fetchval('SELECT 1 FROM ticket_messages LIMIT 1')
+    except Exception:
+        raise HTTPException(503,'Database unavailable')
+    return {'status':'ok'}
 @app.get('/auth/start')
 async def auth_start(discord_id:int,token:str):
     expected=hmac.new(settings.bot_internal_token.encode(),str(discord_id).encode(),hashlib.sha256).hexdigest()
