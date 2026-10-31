@@ -52,11 +52,22 @@ async def shoppex_delivery(kind:str,request:Request):
     order=str(payload.get('order_id') or payload.get('order') or '')
     product=str(payload.get('product_id') or payload.get('product') or '')
     unit_count=payload.get('quantity')
-    mapping=os.getenv('SHOPPEX_ONLINE_PRODUCT_ID' if kind=='online' else 'SHOPPEX_OFFLINE_PRODUCT_ID','')
-    unit_size=int(os.getenv('SHOPPEX_ONLINE_MEMBERS_PER_UNIT' if kind=='online' else 'SHOPPEX_OFFLINE_MEMBERS_PER_UNIT','0'))
-    if not mapping or mapping!=product or not order or len(order)>128 or len(product)>128 or type(unit_count)!=int or not 1<=unit_count<=100000 or unit_size<=0:
-        log.warning('Shoppex product mismatch kind=%s mapped=%s match=%s quantity_valid=%s order_present=%s',kind,bool(mapping),mapping==product,type(unit_count) is int and 1<=unit_count<=100000,bool(order))
-        raise HTTPException(400,'Shoppex product mapping or quantity invalid')
+    mapping=os.getenv('SHOPPEX_ONLINE_PRODUCT_ID' if kind=='online' else 'SHOPPEX_OFFLINE_PRODUCT_ID','').strip()
+    raw_units=os.getenv('SHOPPEX_ONLINE_MEMBERS_PER_UNIT' if kind=='online' else 'SHOPPEX_OFFLINE_MEMBERS_PER_UNIT','')
+    if not mapping:
+        raise HTTPException(503,f'SHOPPEX_{kind.upper()}_PRODUCT_ID is missing in Railway')
+    if not raw_units.isdecimal() or int(raw_units)<1:
+        raise HTTPException(503,f'SHOPPEX_{kind.upper()}_MEMBERS_PER_UNIT must be a positive integer')
+    unit_size=int(raw_units)
+    if not order or len(order)>128:
+        raise HTTPException(400,'Shoppex delivery requires a valid order identifier')
+    if not product or len(product)>128:
+        raise HTTPException(400,'Shoppex delivery requires a product identifier')
+    if not hmac.compare_digest(mapping,product):
+        log.warning('Shoppex %s dynamic delivery rejected due to product ID mismatch',kind)
+        raise HTTPException(400,f'Shoppex {kind} product ID does not match SHOPPEX_{kind.upper()}_PRODUCT_ID in Railway')
+    if type(unit_count) is not int or not 1<=unit_count<=100000:
+        raise HTTPException(400,'Shoppex quantity must be an integer from 1 to 100000')
     amount=unit_count*unit_size
     async with db.pool.acquire() as conn:
         minimum=await conn.fetchval('SELECT min_amount FROM public.member_order_settings WHERE member_type=$1',kind)
