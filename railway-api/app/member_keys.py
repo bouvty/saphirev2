@@ -2,6 +2,7 @@
 import os,hmac,hashlib,json,re,secrets,time,logging
 from datetime import timezone
 from fastapi import APIRouter,Request,HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel,Field
 from cryptography.fernet import Fernet
 from . import db
@@ -111,12 +112,14 @@ async def shoppex_delivery(kind:str,request:Request):
                 # Shoppex should accept pending fulfillment for a duplicate delivery.
                 if row['key_ciphertext']:
                     saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
-                    return {'deliver':saved}
+                    log.info('Shoppex response ready: existing key, type=%s, fields=deliver',kind)
+                    return JSONResponse(content={'deliver':saved},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'existing'})
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key=generate_redeem_key()
             await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
-    return {'deliver':key}
+    log.info('Shoppex response ready: newly issued key, type=%s, fields=deliver',kind)
+    return JSONResponse(content={'deliver':key},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'issued'})
 
 class RedeemBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
