@@ -1,4 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
+import {createHash} from 'node:crypto';
 export const runtime='nodejs';export const dynamic='force-dynamic';
 const upstream=process.env.RAILWAY_API_URL||'https://saphire-python-api-production.up.railway.app';
 const aliases:Record<string,string>={
@@ -41,7 +42,22 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
    if(dest.protocol!=='https:'||(!['discord.com','www.discord.com','saphire.rip'].includes(dest.hostname)))return NextResponse.json({error:'Invalid redirect'},{status:502});
    resultHeaders.set('Location',dest.toString());
   }
-  return new NextResponse(response.status===204?null:await response.arrayBuffer(),{status:response.status,headers:resultHeaders});
+  const payload=response.status===204?null:await response.arrayBuffer();
+  if(shoppexFlow){
+   const raw=payload?Buffer.from(payload):Buffer.alloc(0);
+   const deliveryId=req.headers.get('x-shoppex-delivery-id')||'';
+   let hasDeliver=false,format='not-json',masked='none';
+   try{
+    const parsed=JSON.parse(raw.toString('utf8'));
+    format=typeof parsed==='object'&&parsed!==null?'json-object':'other-json';
+    if(typeof parsed?.deliver==='string'){
+      hasDeliver=true;
+      masked=parsed.deliver.slice(0,5)+'…'+parsed.deliver.slice(-4);
+    }
+   }catch{}
+   console.info(JSON.stringify({event:'shoppex_gateway_response',route:mapped,deliveryRef:createHash('sha256').update(deliveryId).digest('hex').slice(0,16),status:response.status,bytes:raw.length,contentType:contentType||'',format,hasDeliver,keyPreview:masked}));
+  }
+  return new NextResponse(payload,{status:response.status,headers:resultHeaders});
  }catch{return NextResponse.json({error:'API temporarily unavailable'},{status:502})}
 }
 export {handler as GET,handler as POST};
