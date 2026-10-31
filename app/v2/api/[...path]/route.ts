@@ -6,7 +6,10 @@ const aliases:Record<string,string>={
  'auth/v2/discord':'/auth/v2/discord','auth/discord/callback':'/auth/v2/discord/callback',
  'auth/discord/internal/success':'/internal/auth/v2/discord/success',
  'internal/tickets':'/internal/tickets','auth/login':'/auth/start',
- 'members/stock':'/members/stock'
+ 'members/stock':'/members/stock',
+ 'resellers/members/order':'/resellers/members/order',
+ 'members/order/redeem':'/members/order/redeem',
+ 'members/order':'/members/order'
 };
 function mapPath(parts:string[]){const path=parts.join('/');if(path==='auth/discord/'||path==='auth/discord')return '/auth/v2/discord';
  for(const [key,value] of Object.entries(aliases).sort((a,b)=>b[0].length-a[0].length)){if(path===key||path.startsWith(key+'/'))return value+path.slice(key.length)}return null}

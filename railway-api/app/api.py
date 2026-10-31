@@ -88,3 +88,6 @@ app.include_router(auth_v2_router)
 
 from .stock_cache import router as stock_router
 app.include_router(stock_router)
+
+from .member_keys import router as member_keys_router
+app.include_router(member_keys_router)
