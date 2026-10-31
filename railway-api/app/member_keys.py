@@ -82,7 +82,7 @@ async def shoppex_delivery(kind:str,request:Request):
     # Shoppex dynamic delivery may omit an order ID from the JSON body.
     # After validating HMAC, the signed delivery ID provides an idempotent fallback.
     if not order:
-        order='delivery:'+delivery_id
+        order='delivery:'+hashlib.sha256(delivery_id.encode()).hexdigest()
         log.info('Shoppex %s body omitted order ID; using authenticated delivery identifier',kind)
     if len(order)>128:
         delivery_error(400,'ORDER_ID_INVALID','Order identifier exceeds 128 characters.',field='order')
