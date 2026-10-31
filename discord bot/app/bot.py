@@ -1342,7 +1342,19 @@ class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem your Saphire key'):
                 response=await client.post('https://saphire-python-api-production.up.railway.app/members/order/redeem',
                     headers={'x-api-key':secret},json={'key':key,'discord_id':str(inter.user.id)})
             if response.status_code!=200:
-                return await inter.followup.send('Redemption service unavailable. Contact staff.',ephemeral=True)
+                # Never log the submitted key or API credential.
+                log.error('Saphire member redemption API rejected request: HTTP %s, user_id=%s',
+                          response.status_code, inter.user.id)
+                if response.status_code in (401, 403):
+                    return await inter.followup.send(
+                        'Saphire redemption authentication failed (HTTP 401/403). Staff: set '
+                        'SAPHIRE_V2_API_KEY in the bot .env to the SAME value configured on Railway, '
+                        'then restart the bot.', ephemeral=True)
+                if response.status_code==422:
+                    return await inter.followup.send(
+                        'The redemption request was rejected as invalid (HTTP 422). Contact staff.',ephemeral=True)
+                return await inter.followup.send(
+                    f'Redemption API returned HTTP {response.status_code}. Contact staff.',ephemeral=True)
             result=response.json()
             if result.get('valid') is not True:
                 return await inter.followup.send('Invalid key.',ephemeral=True)
