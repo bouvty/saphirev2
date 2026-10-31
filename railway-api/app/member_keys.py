@@ -69,10 +69,9 @@ async def shoppex_delivery(kind:str,request:Request):
     if type(unit_count) is not int or not 1<=unit_count<=100000:
         raise HTTPException(400,'Shoppex quantity must be an integer from 1 to 100000')
     amount=unit_count*unit_size
+    if amount<1 or amount>100000:
+        raise HTTPException(400,'Order quantity outside limits')
     async with db.pool.acquire() as conn:
-        minimum=await conn.fetchval('SELECT min_amount FROM public.member_order_settings WHERE member_type=$1',kind)
-        # A Shoppex unit is one member. Minimum provider order quantities apply at redemption, not paid-key delivery.
-    if amount<1 or amount>100000:raise HTTPException(400,'Order quantity outside limits')
         async with conn.transaction():
             row=await conn.fetchrow('SELECT * FROM public.member_redeem_keys WHERE fulfillment_id=$1 OR (shoppex_order_id=$2 AND shoppex_product_id=$3) FOR UPDATE',delivery_id,order,product)
             if row:
