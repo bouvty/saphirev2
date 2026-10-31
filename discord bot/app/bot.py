@@ -1290,7 +1290,7 @@ class MemberInviteModal(discord.ui.Modal, title='Complete your member order'):
         except ValueError as exc:
             return await inter.response.send_message(str(exc),ephemeral=True)
         await inter.response.defer(ephemeral=True,thinking=True)
-        secret=os.getenv('SAPHIRE_V2_API_KEY','')
+        secret=settings.saphire_v2_api_key
         if not secret:
             return await inter.followup.send('Redeem API is not configured. Contact staff.',ephemeral=True)
         import httpx
@@ -1333,7 +1333,7 @@ class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem your Saphire key'):
     async def on_submit(self,inter):
         await inter.response.defer(ephemeral=True,thinking=True)
         key=str(self.key_input.value).strip()
-        secret=os.getenv('SAPHIRE_V2_API_KEY','')
+        secret=settings.saphire_v2_api_key
         if not secret:
             return await inter.followup.send('Redeem API is not configured. Contact staff.',ephemeral=True)
         import httpx
