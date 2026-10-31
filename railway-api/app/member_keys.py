@@ -83,7 +83,14 @@ async def shoppex_delivery(kind:str,request:Request):
         delivery_error(400,'ORDER_ID_INVALID','Missing or invalid order ID: expected a nonempty order/order_id string (max 128 characters).',field='order')
     if not product or len(product)>128:
         delivery_error(400,'PRODUCT_ID_MISSING','Missing product ID: expected product/product_id in the signed delivery JSON.',field='product')
-    if not hmac.compare_digest(mapping,product):
+    # Shoppex product API exposes an internal id and a storefront uniqid.
+    # Configure the internal id as canonical; accept the known public uniqid for compatibility.
+    known_public_ids={'offline':'01a19330-dc05-73d9-a1a3-ca7d7e7425e8',
+                      'online':'01a1932e-25e2-7a22-a94e-39d1b4ad1bfe'}
+    matched=hmac.compare_digest(mapping,product) or (hmac.compare_digest(product,known_public_ids[kind]) and mapping in {
+        'offline':'01a19330-dc09-76b4-8102-ce09e0b2b49d',
+        'online':'01a1932e-25e6-7d39-b303-d9edaeb85b82'}.values())
+    if not matched:
         log.warning('Shoppex %s dynamic delivery rejected due to product ID mismatch',kind)
         delivery_error(400,'PRODUCT_ID_MISMATCH',f'{kind.title()} product ID does not match the configured Shoppex product ID in Railway. Check the full product UUID, not its shortened suffix.',field='product')
     if type(unit_count) is not int or not 1<=unit_count<=100000:
