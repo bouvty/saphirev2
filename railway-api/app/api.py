@@ -140,4 +140,4 @@ class ShoppexResponseWireTap:
         await self.inner(scope, receive, traced_send)
 
 
-app = ShoppexResponseWireTap(app)
+app.add_middleware(ShoppexResponseWireTap)
