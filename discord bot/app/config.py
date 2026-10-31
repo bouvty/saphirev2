@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     discord_member_api_base_url: str = ''
     discord_member_api_key: str = ''
     discord_delivery_api_key: str = ''
-    discord_member_stock_url: str = 'https://members-api.discorium.cc/api/v2/stock'
+    discord_member_stock_url: str = 'https://176.100.37.219/api/v2/stock'
     discord_member_owner_log_channel_id: int = 0
     public_base_url: str = 'https://saphire.rip'
     discord_guild_id: int = 0
