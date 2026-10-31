@@ -24,7 +24,7 @@ def verify_shoppex(req,raw,kind):
     expected=hmac.new(secret.encode(),delivery.encode()+b'.'+timestamp.encode()+b'.'+raw,hashlib.sha256).hexdigest()
     if not re.fullmatch(r'v1,t=\d+,h=[a-fA-F0-9]{64}',signature):
         raise HTTPException(401,'Invalid Shoppex signature')
-    fields=dict(part.split('=',1) for part in signature.split(','))
+    fields=dict(part.split('=',1) for part in signature.split(',')[1:] if '=' in part)
     if fields.get('t')!=timestamp or not hmac.compare_digest(expected,fields.get('h','').lower()):
         raise HTTPException(401,'Invalid Shoppex signature')
     return delivery
