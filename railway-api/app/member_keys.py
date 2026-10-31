@@ -21,7 +21,7 @@ def verify_shoppex(req,raw):
         raise HTTPException(401,'Invalid Shoppex delivery authentication')
     # Shoppex signs deliveryId.timestamp.rawBody; never trust unsigned product or amount.
     expected=hmac.new(secret.encode(),delivery.encode()+b'.'+timestamp.encode()+b'.'+raw,hashlib.sha256).hexdigest()
-    if not re.fullmatch(r'v1,t=\\d+,h=[a-fA-F0-9]{64}',signature):
+    if not re.fullmatch(r'v1,t=\d+,h=[a-fA-F0-9]{64}',signature):
         raise HTTPException(401,'Invalid Shoppex signature')
     fields=dict(part.split('=',1) for part in signature.split(','))
     if fields.get('t')!=timestamp or not hmac.compare_digest(expected,fields.get('h','').lower()):
@@ -64,7 +64,7 @@ async def shoppex_delivery(kind:str,request:Request):
 
 class RedeemBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
-    discord_id:str=Field(pattern=r'^\\d{15,22}$')
+    discord_id:str=Field(pattern=r'^\d{15,22}$')
 
 @router.post('/members/order/redeem')
 async def redeem(payload:RedeemBody,request:Request):
@@ -79,7 +79,7 @@ async def redeem(payload:RedeemBody,request:Request):
 
 class OrderBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
-    discord_id:str=Field(pattern=r'^\\d{15,22}$')
+    discord_id:str=Field(pattern=r'^\d{15,22}$')
     invite_url:str=Field(min_length=18,max_length=250)
 
 @router.post('/members/order')
