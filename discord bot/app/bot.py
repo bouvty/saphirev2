@@ -1296,7 +1296,7 @@ class MemberInviteModal(discord.ui.Modal, title='Complete your member order'):
         import httpx
         try:
             async with httpx.AsyncClient(timeout=35) as client:
-                response=await client.post('https://saphire.rip/v2/api/members/order',
+                response=await client.post('https://saphire-python-api-production.up.railway.app/members/order',
                     headers={'x-api-key':secret},json={'key':self.key,'discord_id':str(self.user_id),'invite_url':invite})
             if response.status_code==200 and response.json().get('success') is True:
                 result=response.json()
@@ -1339,7 +1339,7 @@ class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem your Saphire key'):
         import httpx
         try:
             async with httpx.AsyncClient(timeout=20) as client:
-                response=await client.post('https://saphire.rip/v2/members/order/redeem',
+                response=await client.post('https://saphire-python-api-production.up.railway.app/members/order/redeem',
                     headers={'x-api-key':secret},json={'key':key,'discord_id':str(inter.user.id)})
             if response.status_code!=200:
                 return await inter.followup.send('Redemption service unavailable. Contact staff.',ephemeral=True)
