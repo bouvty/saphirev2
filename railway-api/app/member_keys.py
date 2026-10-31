@@ -29,6 +29,10 @@ def verify_shoppex(req,raw,kind):
         raise HTTPException(401,'Invalid Shoppex signature')
     return delivery
 
+def generate_redeem_key():
+    alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return 'SAPH-'+'-'.join(''.join(secrets.choice(alphabet) for _ in range(5)) for _ in range(3))
+
 def make_hash(key):
     return hashlib.sha256(key.encode()).hexdigest()
 
@@ -65,7 +69,7 @@ async def shoppex_delivery(kind:str,request:Request):
                     saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
                     return {'deliver':saved,'key':saved,'amount':row['amount'],'type':row['member_type']}
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
-            key='SAPH-'+secrets.token_urlsafe(32)
+            key=generate_redeem_key()
             await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
     return {'deliver':key,'key':key,'amount':amount,'type':kind}
