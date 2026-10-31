@@ -8,6 +8,13 @@ from . import db
 router=APIRouter()
 log=logging.getLogger("saphire.members.keys")
 
+def delivery_error(status, code, explanation, *, field=None):
+    """Specific Shoppex-safe failure response, without exposing credentials or customer data."""
+    detail={'code':code,'message':explanation}
+    if field: detail['field']=field
+    raise HTTPException(status_code=status,detail=detail)
+
+
 def require_internal(req):
     expected=os.getenv('SAPHIRE_V2_API_KEY','')
     if not expected or not hmac.compare_digest(req.headers.get('x-api-key',''),expected):
@@ -43,14 +50,14 @@ async def shoppex_delivery(kind:str,request:Request):
     if len(raw)>32768:raise HTTPException(413,'Payload too large')
     delivery_id=verify_shoppex(request,raw,kind)
     try:payload=json.loads(raw)
-    except ValueError:raise HTTPException(400,'Invalid payload')
+    except ValueError:delivery_error(400,'JSON_INVALID','Request body must be valid JSON.')
     cipher_secret=os.getenv('SHOPPEX_KEY_ENCRYPTION_KEY','')
     if not cipher_secret:raise HTTPException(503,'Shoppex delivery encryption is not configured')
     try:cipher=Fernet(cipher_secret.encode())
     except Exception:raise HTTPException(503,'Shoppex delivery encryption is invalid')
     # Exact Shoppex paid order/product mapping must be configured and verified against test delivery.
     if not isinstance(payload,dict):
-        raise HTTPException(400,'Shoppex delivery payload must be a JSON object')
+        delivery_error(400,'PAYLOAD_TYPE_INVALID','Expected JSON object with order, product and quantity.')
     order_value=payload.get('order_id') or payload.get('order')
     product_value=payload.get('product_id') or payload.get('product')
     if isinstance(order_value,dict):
@@ -68,22 +75,22 @@ async def shoppex_delivery(kind:str,request:Request):
     mapping=os.getenv('SHOPPEX_ONLINE_PRODUCT_ID' if kind=='online' else 'SHOPPEX_OFFLINE_PRODUCT_ID','').strip()
     raw_units=os.getenv('SHOPPEX_ONLINE_MEMBERS_PER_UNIT' if kind=='online' else 'SHOPPEX_OFFLINE_MEMBERS_PER_UNIT','')
     if not mapping:
-        raise HTTPException(503,f'SHOPPEX_{kind.upper()}_PRODUCT_ID is missing in Railway')
+        delivery_error(503,'PRODUCT_NOT_CONFIGURED',f'SHOPPEX_{kind.upper()}_PRODUCT_ID is missing in Railway.')
     if not raw_units.isdecimal() or int(raw_units)<1:
-        raise HTTPException(503,f'SHOPPEX_{kind.upper()}_MEMBERS_PER_UNIT must be a positive integer')
+        delivery_error(503,'UNITS_NOT_CONFIGURED',f'SHOPPEX_{kind.upper()}_MEMBERS_PER_UNIT must be a positive integer.')
     unit_size=int(raw_units)
     if not order or len(order)>128:
-        raise HTTPException(400,'Shoppex delivery requires a valid order identifier')
+        delivery_error(400,'ORDER_ID_INVALID','Missing or invalid order ID: expected a nonempty order/order_id string (max 128 characters).',field='order')
     if not product or len(product)>128:
-        raise HTTPException(400,'Shoppex delivery requires a product identifier')
+        delivery_error(400,'PRODUCT_ID_MISSING','Missing product ID: expected product/product_id in the signed delivery JSON.',field='product')
     if not hmac.compare_digest(mapping,product):
         log.warning('Shoppex %s dynamic delivery rejected due to product ID mismatch',kind)
-        raise HTTPException(400,f'Shoppex {kind} product ID does not match SHOPPEX_{kind.upper()}_PRODUCT_ID in Railway')
+        delivery_error(400,'PRODUCT_ID_MISMATCH',f'{kind.title()} product ID does not match the configured Shoppex product ID in Railway. Check the full product UUID, not its shortened suffix.',field='product')
     if type(unit_count) is not int or not 1<=unit_count<=100000:
-        raise HTTPException(400,'Shoppex quantity must be an integer from 1 to 100000')
+        delivery_error(400,'QUANTITY_INVALID',f'Quantity must be an integer between 1 and 100000; received type {type(unit_count).__name__}.',field='quantity')
     amount=unit_count*unit_size
     if amount<1 or amount>100000:
-        raise HTTPException(400,'Order quantity outside limits')
+        delivery_error(400,'AMOUNT_OUT_OF_RANGE','Calculated member quantity must be between 1 and 100000.',field='quantity')
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             row=await conn.fetchrow('SELECT * FROM public.member_redeem_keys WHERE fulfillment_id=$1 OR (shoppex_order_id=$2 AND shoppex_product_id=$3) FOR UPDATE',delivery_id,order,product)
