@@ -55,11 +55,13 @@ async def shoppex_delivery(kind:str,request:Request):
     mapping=os.getenv('SHOPPEX_ONLINE_PRODUCT_ID' if kind=='online' else 'SHOPPEX_OFFLINE_PRODUCT_ID','')
     unit_size=int(os.getenv('SHOPPEX_ONLINE_MEMBERS_PER_UNIT' if kind=='online' else 'SHOPPEX_OFFLINE_MEMBERS_PER_UNIT','0'))
     if not mapping or mapping!=product or not order or len(order)>128 or len(product)>128 or type(unit_count)!=int or not 1<=unit_count<=100000 or unit_size<=0:
-        raise HTTPException(400,'Product or quantity is not configured')
+        log.warning('Shoppex product mismatch kind=%s mapped=%s match=%s quantity_valid=%s order_present=%s',kind,bool(mapping),mapping==product,type(unit_count) is int and 1<=unit_count<=100000,bool(order))
+        raise HTTPException(400,'Shoppex product mapping or quantity invalid')
     amount=unit_count*unit_size
     async with db.pool.acquire() as conn:
         minimum=await conn.fetchval('SELECT min_amount FROM public.member_order_settings WHERE member_type=$1',kind)
-        if amount<int(minimum or 1) or amount>100000:raise HTTPException(400,'Order quantity outside limits')
+        # A Shoppex unit is one member. Minimum provider order quantities apply at redemption, not paid-key delivery.
+    if amount<1 or amount>100000:raise HTTPException(400,'Order quantity outside limits')
         async with conn.transaction():
             row=await conn.fetchrow('SELECT * FROM public.member_redeem_keys WHERE fulfillment_id=$1 OR (shoppex_order_id=$2 AND shoppex_product_id=$3) FOR UPDATE',delivery_id,order,product)
             if row:
