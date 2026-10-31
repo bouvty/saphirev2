@@ -19,6 +19,18 @@ async def lifespan(app):
         except asyncio.CancelledError: pass
         await db.stop()
 app=FastAPI(title='Saphire V2 API',docs_url=None,redoc_url=None,lifespan=lifespan)
+
+# Require the API key for the public stock cache even when Railway is accessed directly.
+@app.middleware('http')
+async def stock_api_auth(request:Request,call_next):
+    if request.url.path=='/members/stock':
+        expected=os.environ.get('SAPHIRE_V2_API_KEY','')
+        supplied=request.headers.get('x-api-key','')
+        if not expected or not hmac.compare_digest(supplied,expected):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({'error':'Invalid or missing API key'},status_code=401,headers={'Cache-Control':'no-store'})
+    return await call_next(request)
+
 def state_hash(value):return hashlib.sha256((settings.oauth_state_secret+value).encode()).hexdigest()
 @app.get('/health')
 async def health():
