@@ -1905,7 +1905,7 @@ async def _restock_panel_content():
         return f"{int(row['available']):,}" if fresh and row and row['available'] is not None else 'Unavailable'
     if fresh:
         last = min(stock[k]['refreshed_at'] for k in ('online', 'offline'))
-        next_at = last + timedelta(seconds=60)
+        next_at = last + dt.timedelta(seconds=60)
         when = int(next_at.timestamp())
         updated = int(last.timestamp())
         info = (f"Last updated: <t:{updated}:R>\n"
