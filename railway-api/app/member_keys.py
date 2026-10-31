@@ -1,4 +1,7 @@
-"""Shoppex signed dynamic fulfillment and one-time member key redemption."""
+"""Shoppex signed dynamic fulfillment and one-time member key redemption.
+
+Outbound delivery diagnostics use masked keys and a per-delivery trace ID.
+"""
 import os,hmac,hashlib,json,re,secrets,time,logging
 from datetime import timezone
 from fastapi import APIRouter,Request,HTTPException
