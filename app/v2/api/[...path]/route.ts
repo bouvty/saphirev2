@@ -14,9 +14,10 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
  const {path}=await params;const mapped=mapPath(path||[]);
  if(!mapped)return NextResponse.json({error:'Not found'},{status:404});
  const callback=mapped==='/auth/callback'||mapped==='/auth/v2/discord/callback';
+ const inviteFlow=mapped==='/auth/start'||mapped==='/auth/v2/discord'||mapped.startsWith('/auth/v2/discord/');
  // OAuth callback is authorized by an expiring, single-use state, not a public API token.
  const expected=process.env.SAPHIRE_V2_API_KEY;
- if(!callback&&(!expected||req.headers.get('x-api-key')!==expected))
+ if(!callback&&!inviteFlow&&(!expected||req.headers.get('x-api-key')!==expected))
   return NextResponse.json({error:'Invalid or missing API key'},{status:401,headers:{'Cache-Control':'no-store'}});
  if(mapped.startsWith('/internal/')&&!req.headers.get('authorization'))
   return NextResponse.json({error:'Internal authorization required'},{status:403});
