@@ -2,7 +2,7 @@
 import os,hmac,hashlib,json,re,secrets,time,logging
 from datetime import timezone
 from fastapi import APIRouter,Request,HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel,Field
 from cryptography.fernet import Fernet
 from . import db
@@ -43,6 +43,27 @@ def generate_redeem_key():
 
 def make_hash(key):
     return hashlib.sha256(key.encode()).hexdigest()
+
+def shoppex_key_response(kind, delivery_id, key, existing):
+    """Make delivery bytes explicit and emit a safe response diagnostic to stdout."""
+    body = json.dumps({'deliver': key}, separators=(',', ':'), ensure_ascii=True).encode('utf-8')
+    trace = hashlib.sha256(delivery_id.encode()).hexdigest()[:16]
+    print(json.dumps({
+        'event': 'SHOPPEX_OUTBOUND_RESPONSE',
+        'trace': trace,
+        'kind': kind,
+        'status': 200,
+        'body_bytes': len(body),
+        'content_type': 'application/json',
+        'deliver_present': True,
+        'key_mask': key[:5] + '...' + key[-4:],
+        'existing': existing
+    }), flush=True)
+    return Response(content=body, status_code=200, media_type='application/json',
+                    headers={'Cache-Control':'no-store',
+                             'Content-Length':str(len(body)),
+                             'X-Saphire-Trace':trace,
+                             'X-Saphire-Delivery':'existing' if existing else 'issued'})
 
 @router.post('/resellers/members/order/{kind}')
 async def shoppex_delivery(kind:str,request:Request):
@@ -113,13 +134,13 @@ async def shoppex_delivery(kind:str,request:Request):
                 if row['key_ciphertext']:
                     saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
                     log.info('SHOPPEX_RESPONSE kind=%s status=200 delivery_ref=%s existing=true format=json content_type=application/json fields=deliver key_mask=%s body_bytes=%s',kind,hashlib.sha256(delivery_id.encode()).hexdigest()[:16],saved[:5]+'…'+saved[-4:],len(json.dumps({'deliver':saved}).encode()))
-                    return JSONResponse(content={'deliver':saved},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'existing'})
+                    return shoppex_key_response(kind, delivery_id, saved, True)
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key=generate_redeem_key()
             await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
     log.info('SHOPPEX_RESPONSE kind=%s status=200 delivery_ref=%s existing=false format=json content_type=application/json fields=deliver key_mask=%s body_bytes=%s',kind,hashlib.sha256(delivery_id.encode()).hexdigest()[:16],key[:5]+'…'+key[-4:],len(json.dumps({'deliver':key}).encode()))
-    return JSONResponse(content={'deliver':key},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'issued'})
+    return shoppex_key_response(kind, delivery_id, key, False)
 
 class RedeemBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
