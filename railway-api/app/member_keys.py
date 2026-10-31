@@ -68,6 +68,28 @@ def shoppex_key_response(kind, delivery_id, key, existing):
                              'X-Saphire-Trace':trace,
                              'X-Saphire-Delivery':'existing' if existing else 'issued'})
 
+def shoppex_log_payload(kind, delivery_id, payload, raw):
+    """Audit authenticated Shoppex payload fields, withholding customer personal data."""
+    sensitive = ('email', 'ip', 'location', 'address', 'phone', 'name', 'token', 'secret', 'signature', 'authorization')
+    def redact(obj, depth=0):
+        if depth >= 8:
+            return '[MAX_DEPTH]'
+        if isinstance(obj, dict):
+            return {str(k): '[REDACTED]' if any(word in str(k).lower() for word in sensitive)
+                    else redact(v, depth + 1) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [redact(v, depth + 1) for v in obj[:30]]
+        if isinstance(obj, str) and len(obj) > 300:
+            return obj[:300] + '[TRUNCATED]'
+        return obj
+    print(json.dumps({
+        'event': 'SHOPPEX_VERIFIED_REQUEST',
+        'trace': hashlib.sha256(delivery_id.encode()).hexdigest()[:16],
+        'kind': kind,
+        'request_bytes': len(raw),
+        'payload': redact(payload),
+    }, separators=(',', ':'), default=str), flush=True)
+
 @router.post('/resellers/members/order/{kind}')
 async def shoppex_delivery(kind:str,request:Request):
     if kind not in ('online','offline'):raise HTTPException(404,'Unknown member product')
@@ -83,6 +105,7 @@ async def shoppex_delivery(kind:str,request:Request):
     # Exact Shoppex paid order/product mapping must be configured and verified against test delivery.
     if not isinstance(payload,dict):
         delivery_error(400,'PAYLOAD_TYPE_INVALID','Expected JSON object with order, product and quantity.')
+    shoppex_log_payload(kind, delivery_id, payload, raw)
     order_value=payload.get('order_id') or payload.get('order')
     product_value=payload.get('product_id') or payload.get('product')
     if isinstance(order_value,dict):
