@@ -5,16 +5,33 @@ import httpx
 STOCK_TYPES = ('online', 'offline')
 
 
+def _stock_count(value, kind):
+    """Accept non-negative integer stock counts, including numeric strings."""
+    if isinstance(value, dict):
+        for name in ('available', 'stock', 'count', 'quantity', 'total'):
+            if name in value:
+                return _stock_count(value[name], kind)
+    if type(value) is int:
+        count = value
+    elif isinstance(value, str) and value.strip().isdecimal():
+        count = int(value.strip())
+    else:
+        raise ValueError(f'Invalid {kind} stock count (type={type(value).__name__})')
+    if count < 0 or count > 2_147_483_647:
+        raise ValueError(f'Invalid {kind} stock count (out of range)')
+    return count
+
+
 def parse_stock(payload):
     if not isinstance(payload, dict) or payload.get('success') is not True:
         raise ValueError('Stock API did not confirm success')
-    result = {}
-    for kind in STOCK_TYPES:
-        value = payload.get(kind)
-        if type(value) is not int or value < 0:
-            raise ValueError(f'Invalid {kind} stock count')
-        result[kind] = value
-    return result
+    values = payload
+    for name in ('data', 'stock', 'inventory'):
+        nested = payload.get(name)
+        if isinstance(nested, dict) and all(kind in nested for kind in STOCK_TYPES):
+            values = nested
+            break
+    return {kind: _stock_count(values.get(kind), kind) for kind in STOCK_TYPES}
 
 
 async def sync_stock(database, endpoint):
