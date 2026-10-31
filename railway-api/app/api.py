@@ -93,7 +93,7 @@ from .member_keys import router as member_keys_router
 app.include_router(member_keys_router)
 
 
-# Trace actual ASGI response frames for signed Shoppex delivery endpoints.
+# Trace ASGI response frames for signed Shoppex deliveries (Nixpacks build).
 # This captures what the application hands to the HTTP server, not what
 # the remote Shoppex client ultimately receives.
 class ShoppexResponseWireTap:
