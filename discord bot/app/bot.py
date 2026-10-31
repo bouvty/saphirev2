@@ -1269,6 +1269,11 @@ async def discord_provider_credits(ctx):
         log.warning('Could not DM owner their reseller credits')
 
 
+# The V2 key-based checkout supersedes legacy wallet and top-up chat commands.
+for obsolete_command in ('balance','bal','topup','addcredit','creditadd','topuphistory','invoicehistory'):
+    bot.remove_command(obsolete_command)
+
+
 class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem Saphire member key'):
     def __init__(self):
         super().__init__(timeout=300)
@@ -1283,20 +1288,20 @@ class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem Saphire member key'):
         try:
             from .discord_members import validate_invite
             invite=validate_invite(invite)
-            endpoint='https://saphire-python-api-production.up.railway.app'
+            endpoint='https://saphire.rip'
             api_key=os.environ.get('SAPHIRE_V2_API_KEY','')
             if not api_key:
                 return await inter.followup.send('Redeem API is not configured for the bot.',ephemeral=True)
             import httpx
             headers={'x-api-key':api_key,'accept':'application/json'}
             async with httpx.AsyncClient(timeout=30) as client:
-                claim=await client.post(endpoint+'/members/order/redeem',headers=headers,json={'key':key,'discord_id':str(inter.user.id)})
+                claim=await client.post(endpoint+'/v2/members/order/redeem',headers=headers,json={'key':key,'discord_id':str(inter.user.id)})
                 if claim.status_code!=200:
                     return await inter.followup.send('Unable to verify this key. Contact support.',ephemeral=True)
                 details=claim.json()
                 if not details.get('valid'):
                     return await inter.followup.send('Invalid or already redeemed key.',ephemeral=True)
-                response=await client.post(endpoint+'/members/order',headers=headers,json={'key':key,'discord_id':str(inter.user.id),'invite_url':invite})
+                response=await client.post(endpoint+'/v2/api/members/order',headers=headers,json={'key':key,'discord_id':str(inter.user.id),'invite_url':invite})
             if response.status_code==200 and response.json().get('success'):
                 data=response.json()
                 await inter.followup.send(view=cv2_layout(emb('Redemption successful',
@@ -2075,7 +2080,7 @@ async def paypal_receipt_listener(message):
 async def on_ready():
     if not getattr(bot,'db_ready',False):
         bot.db_ready=True
-        bot.add_view(TicketPanel());bot.add_view(TopupStart());bot.add_view(CloseTicketView());bot.add_view(OrderStart());bot.add_view(StockPanelStart());bot.add_view(discord_members.MemberPanel(bot,db,settings,cv2_layout,emb,is_verified,registered));bot.add_view(ProfileStart());bot.add_view(AdminStart());bot.add_view(RestockRoleView());bot.add_view(MemberKeyRedeemView())
+        bot.add_view(TicketPanel());bot.add_view(CloseTicketView());bot.add_view(OrderStart());bot.add_view(StockPanelStart());bot.add_view(ProfileStart());bot.add_view(AdminStart());bot.add_view(RestockRoleView());bot.add_view(MemberKeyRedeemView())
         async with db.pool.acquire() as conn:
             running=await conn.fetch("select id,currency from invoices where channel_id is not null and status in ('pending','confirming','staff_review')")
         for active in running:
