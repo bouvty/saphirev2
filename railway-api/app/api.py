@@ -1,4 +1,4 @@
-import hashlib,secrets,urllib.parse,hmac
+import hashlib,secrets,urllib.parse,hmac,asyncio,os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI,Request,HTTPException
 from fastapi.responses import RedirectResponse,HTMLResponse
@@ -10,8 +10,14 @@ install_auth_log_filter()
 @asynccontextmanager
 async def lifespan(app):
     await db.start()
+    from .stock_cache import schedule
+    task=asyncio.create_task(schedule())
     try: yield
-    finally: await db.stop()
+    finally:
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+        await db.stop()
 app=FastAPI(title='Saphire V2 API',docs_url=None,redoc_url=None,lifespan=lifespan)
 def state_hash(value):return hashlib.sha256((settings.oauth_state_secret+value).encode()).hexdigest()
 @app.get('/health')
@@ -67,3 +73,6 @@ from .sellauth_keys import router as sellauth_router
 app.include_router(sellauth_router)
 from .auth_v2 import router as auth_v2_router
 app.include_router(auth_v2_router)
+
+from .stock_cache import router as stock_router
+app.include_router(stock_router)
