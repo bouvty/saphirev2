@@ -18,9 +18,10 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
  if(!mapped)return NextResponse.json({error:'Not found'},{status:404});
  const callback=mapped==='/auth/callback'||mapped==='/auth/v2/discord/callback';
  const inviteFlow=mapped==='/auth/start'||mapped==='/auth/v2/discord'||mapped.startsWith('/auth/v2/discord/');
+ const shoppexFlow=mapped.startsWith('/resellers/members/order/');
  // OAuth callback is authorized by an expiring, single-use state, not a public API token.
  const expected=process.env.SAPHIRE_V2_API_KEY;
- if(!callback&&!inviteFlow&&(!expected||req.headers.get('x-api-key')!==expected))
+ if(!callback&&!inviteFlow&&!shoppexFlow&&(!expected||req.headers.get('x-api-key')!==expected))
   return NextResponse.json({error:'Invalid or missing API key'},{status:401,headers:{'Cache-Control':'no-store'}});
  if(mapped.startsWith('/internal/')&&!req.headers.get('authorization'))
   return NextResponse.json({error:'Internal authorization required'},{status:403});
@@ -29,6 +30,7 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
   const headers=new Headers({'accept':'application/json'});
   const authorization=req.headers.get('authorization');if(authorization)headers.set('authorization',authorization);
   if(expected)headers.set('x-api-key',expected);
+  if(shoppexFlow)for(const h of ['x-shoppex-signature-v2','x-shoppex-timestamp','x-shoppex-delivery-id','x-shoppex-event']){const v=req.headers.get(h);if(v)headers.set(h,v)}
   const body=req.method==='POST'?await req.arrayBuffer():undefined;
   if(body){headers.set('content-type',req.headers.get('content-type')||'application/json')}
   const response=await fetch(target,{method:req.method,headers,body,redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});
