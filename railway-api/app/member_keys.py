@@ -13,8 +13,8 @@ def require_internal(req):
     if not expected or not hmac.compare_digest(req.headers.get('x-api-key',''),expected):
         raise HTTPException(401,'API key required')
 
-def verify_shoppex(req,raw):
-    secret=os.getenv('SHOPPEX_WEBHOOK_SECRET','')
+def verify_shoppex(req,raw,kind):
+    secret=os.getenv('SHOPPEX_'+kind.upper()+'_SIGNING_SECRET','')
     signature=req.headers.get('x-shoppex-signature-v2','')
     delivery=req.headers.get('x-shoppex-delivery-id','')
     timestamp=req.headers.get('x-shoppex-timestamp','')
@@ -37,7 +37,7 @@ async def shoppex_delivery(kind:str,request:Request):
     if kind not in ('online','offline'):raise HTTPException(404,'Unknown member product')
     raw=await request.body()
     if len(raw)>32768:raise HTTPException(413,'Payload too large')
-    delivery_id=verify_shoppex(request,raw)
+    delivery_id=verify_shoppex(request,raw,kind)
     try:payload=json.loads(raw)
     except ValueError:raise HTTPException(400,'Invalid payload')
     cipher_secret=os.getenv('SHOPPEX_KEY_ENCRYPTION_KEY','')
