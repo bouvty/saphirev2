@@ -1269,20 +1269,78 @@ async def discord_provider_credits(ctx):
         log.warning('Could not DM owner their reseller credits')
 
 
+class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem Saphire member key'):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.key_input=discord.ui.TextInput(label='Redemption key',placeholder='SAPH-...',max_length=150)
+        self.invite_input=discord.ui.TextInput(label='Discord server invitation',placeholder='https://discord.gg/example',max_length=250)
+        self.add_item(self.key_input);self.add_item(self.invite_input)
+
+    async def on_submit(self, inter:discord.Interaction):
+        await inter.response.defer(ephemeral=True,thinking=True)
+        key=str(self.key_input.value).strip()
+        invite=str(self.invite_input.value).strip()
+        try:
+            from .discord_members import validate_invite
+            invite=validate_invite(invite)
+            endpoint='https://saphire-python-api-production.up.railway.app'
+            api_key=os.environ.get('SAPHIRE_V2_API_KEY','')
+            if not api_key:
+                return await inter.followup.send('Redeem API is not configured for the bot.',ephemeral=True)
+            import httpx
+            headers={'x-api-key':api_key,'accept':'application/json'}
+            async with httpx.AsyncClient(timeout=30) as client:
+                claim=await client.post(endpoint+'/members/order/redeem',headers=headers,json={'key':key,'discord_id':str(inter.user.id)})
+                if claim.status_code!=200:
+                    return await inter.followup.send('Unable to verify this key. Contact support.',ephemeral=True)
+                details=claim.json()
+                if not details.get('valid'):
+                    return await inter.followup.send('Invalid or already redeemed key.',ephemeral=True)
+                response=await client.post(endpoint+'/members/order',headers=headers,json={'key':key,'discord_id':str(inter.user.id),'invite_url':invite})
+            if response.status_code==200 and response.json().get('success'):
+                data=response.json()
+                await inter.followup.send(view=cv2_layout(emb('Redemption successful',
+                    f'**Service:** {data["type"].title()} members\\n**Amount:** {data["amount"]:,}\\n'
+                    f'**Provider key:** \\x60{data["provider_key"]}\\x60\\n**Order:** \\x60{data["order_id"]}\\x60')),ephemeral=True)
+            else:
+                await inter.followup.send('Your key was claimed, but the provider order needs staff review. Do not retry or buy another key for this order.',ephemeral=True)
+        except Exception:
+            log.exception('Member key redemption failed for user %s',inter.user.id)
+            await inter.followup.send('Redemption could not complete. Please contact support before retrying.',ephemeral=True)
+
+
+class MemberKeyRedeemView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label='Redeem key',style=discord.ButtonStyle.secondary,custom_id='saphire:members:redeem')
+    async def redeem(self,inter:discord.Interaction,button:discord.ui.Button):
+        await inter.response.send_modal(MemberKeyRedeemModal())
+
+
 @bot.command(name='discordservicle',aliases=['discordservice','discordservicepanel'])
-async def discord_service_panel(ctx, first: str = '', second: str = ''):
-    """Owner-only: ;discordservicle panel CHANNEL_ID or ;discordservicle CHANNEL_ID"""
+async def discord_service_panel(ctx, first: str = '', second: str = '', third: str = ''):
+    """Owner: ;discordservicle [panel CHANNEL_ID] or ;discordservicle min online|offline AMOUNT."""
     if not owner(ctx.author): return
-    channel_arg = second if first.lower() in ('panel','panal') else first
-    if not channel_arg.isdecimal():
-        return await ctx.send('Usage: `;discordservicle panel CHANNEL_ID`')
-    channel=bot.get_channel(int(channel_arg))
+    if first.lower()=='min':
+        kind=second.lower()
+        if kind not in ('online','offline') or not third.isdecimal() or not 1<=int(third)<=100000:
+            return await ctx.send('Usage: \\x60;discordservicle min online|offline AMOUNT\\x60')
+        async with db.pool.acquire() as conn:
+            await conn.execute('INSERT INTO public.member_order_settings(member_type,min_amount) VALUES($1,$2) ON CONFLICT(member_type) DO UPDATE SET min_amount=$2',kind,int(third))
+        return await ctx.send(f'Minimum {kind} member order changed to **{int(third):,}**.')
+    channel_arg=second if first.lower() in ('panel','panal') else first
+    if not channel_arg:
+        channel=ctx.channel
+    elif channel_arg.isdecimal():
+        channel=bot.get_channel(int(channel_arg))
+    else:
+        return await ctx.send('Usage: \\x60;discordservicle [panel CHANNEL_ID]\\x60 or \\x60;discordservicle min online|offline AMOUNT\\x60')
     if not isinstance(channel,discord.TextChannel):
-        return await ctx.send('Invalid text channel ID.')
-    controls=discord_members.MemberPanel(bot,db,settings,cv2_layout,emb,is_verified,registered)
-    await channel.send(view=cv2_layout(emb('Discord services',
-        'Order Discord server members through Saphire. Press Start to open a private checkout.'),controls))
-    await ctx.send(f'Discord services panel published in {channel.mention}.')
+        return await ctx.send('Invalid text channel.')
+    await channel.send(view=cv2_layout(emb('Discord member services',
+        'Have a Saphire member key? Press **Redeem key** to submit your key and Discord server invite. '
+        'Your code is single-use. Keep it private.'),MemberKeyRedeemView()))
+    await ctx.send(f'Redeem panel published in {channel.mention}.')
 
 @bot.group(name='discord', invoke_without_command=True)
 async def discord_commands(ctx):
@@ -2017,7 +2075,7 @@ async def paypal_receipt_listener(message):
 async def on_ready():
     if not getattr(bot,'db_ready',False):
         bot.db_ready=True
-        bot.add_view(TicketPanel());bot.add_view(TopupStart());bot.add_view(CloseTicketView());bot.add_view(OrderStart());bot.add_view(StockPanelStart());bot.add_view(discord_members.MemberPanel(bot,db,settings,cv2_layout,emb,is_verified,registered));bot.add_view(ProfileStart());bot.add_view(AdminStart());bot.add_view(RestockRoleView())
+        bot.add_view(TicketPanel());bot.add_view(TopupStart());bot.add_view(CloseTicketView());bot.add_view(OrderStart());bot.add_view(StockPanelStart());bot.add_view(discord_members.MemberPanel(bot,db,settings,cv2_layout,emb,is_verified,registered));bot.add_view(ProfileStart());bot.add_view(AdminStart());bot.add_view(RestockRoleView());bot.add_view(MemberKeyRedeemView())
         async with db.pool.acquire() as conn:
             running=await conn.fetch("select id,currency from invoices where channel_id is not null and status in ('pending','confirming','staff_review')")
         for active in running:
