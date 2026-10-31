@@ -49,9 +49,22 @@ async def shoppex_delivery(kind:str,request:Request):
     try:cipher=Fernet(cipher_secret.encode())
     except Exception:raise HTTPException(503,'Shoppex delivery encryption is invalid')
     # Exact Shoppex paid order/product mapping must be configured and verified against test delivery.
-    order=str(payload.get('order_id') or payload.get('order') or '')
-    product=str(payload.get('product_id') or payload.get('product') or '')
+    if not isinstance(payload,dict):
+        raise HTTPException(400,'Shoppex delivery payload must be a JSON object')
+    order_value=payload.get('order_id') or payload.get('order')
+    product_value=payload.get('product_id') or payload.get('product')
+    if isinstance(order_value,dict):
+        order_value=order_value.get('id') or order_value.get('order_id')
+    if isinstance(product_value,dict):
+        product_value=product_value.get('id') or product_value.get('product_id')
+    order=str(order_value or '')
+    product=str(product_value or '').removeprefix('#')
     unit_count=payload.get('quantity')
+    if isinstance(unit_count,str) and unit_count.isdecimal():
+        unit_count=int(unit_count)
+    # Log field presence/types only; never log secrets, raw requests or customer details.
+    log.info('Shoppex delivery fields kind=%s keys=%s order_present=%s product_present=%s quantity_type=%s',
+             kind,sorted(payload.keys()),bool(order),bool(product),type(unit_count).__name__)
     mapping=os.getenv('SHOPPEX_ONLINE_PRODUCT_ID' if kind=='online' else 'SHOPPEX_OFFLINE_PRODUCT_ID','').strip()
     raw_units=os.getenv('SHOPPEX_ONLINE_MEMBERS_PER_UNIT' if kind=='online' else 'SHOPPEX_OFFLINE_MEMBERS_PER_UNIT','')
     if not mapping:
