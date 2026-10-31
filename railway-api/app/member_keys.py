@@ -3,6 +3,7 @@ import os,hmac,hashlib,json,re,secrets,time,logging
 from datetime import timezone
 from fastapi import APIRouter,Request,HTTPException
 from pydantic import BaseModel,Field
+from cryptography.fernet import Fernet
 from . import db
 router=APIRouter()
 log=logging.getLogger("saphire.members.keys")
@@ -39,6 +40,10 @@ async def shoppex_delivery(kind:str,request:Request):
     delivery_id=verify_shoppex(request,raw)
     try:payload=json.loads(raw)
     except ValueError:raise HTTPException(400,'Invalid payload')
+    cipher_secret=os.getenv('SHOPPEX_KEY_ENCRYPTION_KEY','')
+    if not cipher_secret:raise HTTPException(503,'Shoppex delivery encryption is not configured')
+    try:cipher=Fernet(cipher_secret.encode())
+    except Exception:raise HTTPException(503,'Shoppex delivery encryption is invalid')
     # Exact Shoppex paid order/product mapping must be configured and verified against test delivery.
     order=str(payload.get('order_id') or payload.get('order') or '')
     product=str(payload.get('product_id') or payload.get('product') or '')
@@ -56,10 +61,13 @@ async def shoppex_delivery(kind:str,request:Request):
             if row:
                 # Repeated deliveries cannot safely reconstruct the plaintext key.
                 # Shoppex should accept pending fulfillment for a duplicate delivery.
-                return {'status':'pending','message':'Fulfillment already recorded; contact staff to recover original key.'}
+                if row['key_ciphertext']:
+                    saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
+                    return {'deliver':saved,'key':saved,'amount':row['amount'],'type':row['member_type']}
+                return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key='SAPH-'+secrets.token_urlsafe(32)
-            await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id)
-                VALUES($1,$2,$3,$4,$5,$6)""",make_hash(key),amount,kind,order,product,delivery_id)
+            await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
+                VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
     return {'deliver':key,'key':key,'amount':amount,'type':kind}
 
 class RedeemBody(BaseModel):
