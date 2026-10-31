@@ -31,7 +31,7 @@ def parse_stock(payload):
         if isinstance(nested, dict) and all(kind in nested for kind in STOCK_TYPES):
             values = nested
             break
-    return {kind: _stock_count(values.get(kind), kind) for kind in STOCK_TYPES}
+    return {kind: _stock_count(values.get(kind, values.get(kind + '_members')), kind) for kind in STOCK_TYPES}
 
 
 async def sync_stock(database, endpoint):
