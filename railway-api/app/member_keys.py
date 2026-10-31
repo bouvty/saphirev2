@@ -111,12 +111,12 @@ async def shoppex_delivery(kind:str,request:Request):
                 # Shoppex should accept pending fulfillment for a duplicate delivery.
                 if row['key_ciphertext']:
                     saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
-                    return {'deliver':saved,'key':saved,'amount':row['amount'],'type':row['member_type']}
+                    return {'deliver':saved}
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key=generate_redeem_key()
             await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
-    return {'deliver':key,'key':key,'amount':amount,'type':kind}
+    return {'deliver':key}
 
 class RedeemBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
