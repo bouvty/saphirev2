@@ -1865,6 +1865,80 @@ async def on_member_join(member):
             log.exception('Could not send/delete welcome ping in channel %s',channel_id)
 
 
+# Persist stock panel message references so existing panels survive bot restarts.
+_RESTOCK_PANELS_FILE = os.path.join(os.path.dirname(__file__), 'restock_panels.json')
+_restock_panel_refs = None
+
+def _restock_refs():
+    global _restock_panel_refs
+    if _restock_panel_refs is None:
+        try:
+            with open(_RESTOCK_PANELS_FILE, encoding='utf-8') as handle:
+                items = json.load(handle)
+            _restock_panel_refs = [[int(a), int(b)] for a, b in items if int(a) > 0 and int(b) > 0] if isinstance(items, list) else []
+        except (OSError, ValueError, TypeError):
+            _restock_panel_refs = []
+    return _restock_panel_refs
+
+def _save_restock_refs():
+    filename = _RESTOCK_PANELS_FILE + '.tmp'
+    with open(filename, 'w', encoding='utf-8') as handle:
+        json.dump(_restock_refs(), handle)
+    os.replace(filename, _RESTOCK_PANELS_FILE)
+
+async def _restock_panel_content():
+    stock = {}
+    try:
+        async with db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT member_type,available,refreshed_at FROM public.discord_member_stock "
+                "WHERE member_type = ANY($1::text[])", ['online', 'offline'])
+        stock = {r['member_type']: r for r in rows}
+    except Exception:
+        log.exception('Unable to read Discord member stock for restock panel')
+    now = discord.utils.utcnow()
+    fresh = all(k in stock and stock[k]['refreshed_at'] is not None
+                and (now - stock[k]['refreshed_at']).total_seconds() < 180
+                for k in ('online', 'offline'))
+    def formatted(kind):
+        row = stock.get(kind)
+        return f"{int(row['available']):,}" if fresh and row and row['available'] is not None else 'Unavailable'
+    if fresh:
+        last = min(stock[k]['refreshed_at'] for k in ('online', 'offline'))
+        next_at = last + timedelta(seconds=60)
+        when = int(next_at.timestamp())
+        updated = int(last.timestamp())
+        info = (f"Last updated: <t:{updated}:R>\n"
+                f"Next stock check: <t:{when}:R> (<t:{when}:T>)")
+    else:
+        info = 'Stock data is unavailable or outdated. Next check: within 60 seconds if automatic sync is running.'
+    return ('**Online members**\n' + formatted('online') + ' available\n\n'
+            '**Offline members**\n' + formatted('offline') + ' available\n\n' + info)
+
+async def _refresh_restock_panels():
+    refs = _restock_refs()
+    if not refs:
+        return
+    content = await _restock_panel_content()
+    stale = []
+    for channel_id, message_id in list(refs):
+        try:
+            channel = bot.get_channel(channel_id) or await bot.fetch_channel(channel_id)
+            message = await channel.fetch_message(message_id)
+            await message.edit(view=cv2_layout(emb('Discord members stock', content)))
+        except (discord.NotFound, discord.Forbidden):
+            stale.append([channel_id, message_id])
+        except discord.HTTPException:
+            log.exception('Could not update restock panel message %s', message_id)
+    if stale:
+        for ref in stale:
+            if ref in refs:
+                refs.remove(ref)
+        try:
+            _save_restock_refs()
+        except OSError:
+            log.exception('Could not persist restock panel references')
+
 # Cache Discord members inventory separately from Top4SMM service catalog.
 @tasks.loop(seconds=60, reconnect=True)
 async def discord_member_stock_maintenance():
@@ -1872,6 +1946,7 @@ async def discord_member_stock_maintenance():
         snapshot = await member_stock.sync_stock(db, settings.discord_member_stock_url)
         log.info('Discord member stock refreshed: online=%s offline=%s',
                  snapshot['online'], snapshot['offline'])
+        await _refresh_restock_panels()
     except asyncio.CancelledError:
         raise
     except Exception:
@@ -2476,22 +2551,19 @@ async def restock_command(ctx):
 
 @restock_command.group(name='panel', invoke_without_command=True)
 async def restock_panel_command(ctx):
-    """Owner: post a live-stock snapshot (unknown values are zero)."""
+    """Owner: post an automatically updating member-stock panel."""
     if not owner_panel_context(ctx):
         return
-    stock = {'online': 0, 'offline': 0}
-    try:
-        async with db.pool.acquire() as conn:
-            rows = await conn.fetch("SELECT member_type, available, refreshed_at >= now() - interval '3 minutes' AS fresh FROM public.discord_member_stock WHERE member_type = ANY($1::text[])", ['online','offline'])
-        for row in rows:
-            if row['member_type'] in stock and row['fresh'] and type(row['available']) is int and row['available'] >= 0:
-                stock[row['member_type']] = row['available']
-    except Exception:
-        log.exception('Could not load stock snapshot; panel will show zero')
-    await ctx.send(view=cv2_layout(emb('Discord members stock',
-        f'**Online members**\n`{stock["online"]:,}` available\n\n'
-        f'**Offline members**\n`{stock["offline"]:,}` available\n\n'
-        '-# Unavailable or outdated stock is shown as 0. Values are a snapshot taken when this panel was posted.')))
+    content = await _restock_panel_content()
+    message = await ctx.send(view=cv2_layout(emb('Discord members stock', content)))
+    refs = _restock_refs()
+    ref = [message.channel.id, message.id]
+    if ref not in refs:
+        refs.append(ref)
+        try:
+            _save_restock_refs()
+        except OSError:
+            log.exception('Unable to save restock panel ID: updates will stop after bot restart')
 
 
 @restock_panel_command.command(name='role')
