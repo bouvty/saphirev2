@@ -49,7 +49,7 @@ def make_hash(key):
 
 def shoppex_key_response(kind, delivery_id, key, existing):
     """Make delivery bytes explicit and emit a safe response diagnostic to stdout."""
-    body = json.dumps({'deliver': key}, separators=(',', ':'), ensure_ascii=True).encode('utf-8')
+    body = key.encode('ascii')
     trace = hashlib.sha256(delivery_id.encode()).hexdigest()[:16]
     print(json.dumps({
         'event': 'SHOPPEX_OUTBOUND_RESPONSE',
@@ -57,12 +57,12 @@ def shoppex_key_response(kind, delivery_id, key, existing):
         'kind': kind,
         'status': 200,
         'body_bytes': len(body),
-        'content_type': 'application/json',
-        'deliver_present': True,
+        'content_type': 'text/plain',
+        'delivery_format': 'plain-key',
         'key_mask': key[:5] + '...' + key[-4:],
         'existing': existing
     }), flush=True)
-    return Response(content=body, status_code=200, media_type='application/json',
+    return Response(content=body, status_code=200, media_type='text/plain',
                     headers={'Cache-Control':'no-store',
                              'Content-Length':str(len(body)),
                              'X-Saphire-Trace':trace,
