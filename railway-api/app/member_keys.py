@@ -44,6 +44,20 @@ def generate_redeem_key():
 def make_hash(key):
     return hashlib.sha256(key.encode()).hexdigest()
 
+@router.get('/resellers/members/order/{kind}/preview')
+async def shoppex_response_preview(kind: str):
+    """Non-redeemable example through the same Vercel -> Railway proxy path."""
+    if kind not in ('online', 'offline'):
+        raise HTTPException(404, 'Unknown member product')
+    body = {'deliver': 'SAPH-DEMO0-DEMO0-DEMO0'}
+    encoded = json.dumps(body, separators=(',', ':')).encode()
+    log.info('SHOPPEX_PREVIEW_RESPONSE kind=%s status=200 bytes=%s content_type=application/json', kind, len(encoded))
+    return JSONResponse(content=body, headers={
+        'Cache-Control': 'no-store',
+        'X-Saphire-Test-Only': 'true',
+        'X-Saphire-Delivery': 'preview',
+    })
+
 @router.post('/resellers/members/order/{kind}')
 async def shoppex_delivery(kind:str,request:Request):
     if kind not in ('online','offline'):raise HTTPException(404,'Unknown member product')
