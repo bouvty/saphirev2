@@ -79,8 +79,13 @@ async def shoppex_delivery(kind:str,request:Request):
     if not raw_units.isdecimal() or int(raw_units)<1:
         delivery_error(503,'UNITS_NOT_CONFIGURED',f'SHOPPEX_{kind.upper()}_MEMBERS_PER_UNIT must be a positive integer.')
     unit_size=int(raw_units)
-    if not order or len(order)>128:
-        delivery_error(400,'ORDER_ID_INVALID','Missing or invalid order ID: expected a nonempty order/order_id string (max 128 characters).',field='order')
+    # Shoppex dynamic delivery may omit an order ID from the JSON body.
+    # After validating HMAC, the signed delivery ID provides an idempotent fallback.
+    if not order:
+        order='delivery:'+delivery_id
+        log.info('Shoppex %s body omitted order ID; using authenticated delivery identifier',kind)
+    if len(order)>128:
+        delivery_error(400,'ORDER_ID_INVALID','Order identifier exceeds 128 characters.',field='order')
     if not product or len(product)>128:
         delivery_error(400,'PRODUCT_ID_MISSING','Missing product ID: expected product/product_id in the signed delivery JSON.',field='product')
     # Shoppex product API exposes an internal id and a storefront uniqid.
