@@ -87,7 +87,7 @@ async def shoppex_post_preview(kind: str, request: Request):
     if not invoice_id or len(invoice_id) > 128:
         delivery_error(400, 'INVOICE_ID_INVALID', 'Expected an invoice identifier')
     # Non-redeemable, visibly demo-marked value. Never generate a production key.
-    demo_key = 'SAPH-DEMO0-DEMO0-DEMO0'
+    demo_key = 'DEMO-' + '-'.join(''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(5)) for _ in range(3))
     shoppex_body = {'deliver': demo_key}
     result = {
         'test_mode': True,
