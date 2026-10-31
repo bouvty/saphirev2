@@ -112,13 +112,13 @@ async def shoppex_delivery(kind:str,request:Request):
                 # Shoppex should accept pending fulfillment for a duplicate delivery.
                 if row['key_ciphertext']:
                     saved=cipher.decrypt(row['key_ciphertext'].encode()).decode()
-                    log.info('Shoppex response ready: existing key, type=%s, fields=deliver',kind)
+                    log.info('SHOPPEX_RESPONSE kind=%s status=200 delivery_ref=%s existing=true format=json content_type=application/json fields=deliver key_mask=%s body_bytes=%s',kind,hashlib.sha256(delivery_id.encode()).hexdigest()[:16],saved[:5]+'…'+saved[-4:],len(json.dumps({'deliver':saved}).encode()))
                     return JSONResponse(content={'deliver':saved},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'existing'})
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key=generate_redeem_key()
             await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
                 VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
-    log.info('Shoppex response ready: newly issued key, type=%s, fields=deliver',kind)
+    log.info('SHOPPEX_RESPONSE kind=%s status=200 delivery_ref=%s existing=false format=json content_type=application/json fields=deliver key_mask=%s body_bytes=%s',kind,hashlib.sha256(delivery_id.encode()).hexdigest()[:16],key[:5]+'…'+key[-4:],len(json.dumps({'deliver':key}).encode()))
     return JSONResponse(content={'deliver':key},headers={'Cache-Control':'no-store','X-Saphire-Delivery':'issued'})
 
 class RedeemBody(BaseModel):
