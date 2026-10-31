@@ -97,6 +97,12 @@ async def order(payload:OrderBody,request:Request):
     u=urlsplit(payload.invite_url)
     if u.scheme!='https' or u.hostname not in ('discord.gg','discord.com','www.discord.com') or not re.fullmatch(r'/([a-zA-Z0-9-]{2,64}|invite/[a-zA-Z0-9-]{2,64})/?',u.path) or u.query or u.fragment:
         raise HTTPException(400,'Invalid Discord invite')
+    # Check configuration before locking a paid key; do not strand it if not configured.
+    import httpx
+    base=os.getenv('DISCORD_MEMBER_API_BASE_URL','').rstrip('/')
+    provider_key=os.getenv('DISCORD_MEMBER_API_KEY','')
+    if not base.startswith('https://') or not provider_key:
+        raise HTTPException(503,'Provider API is not configured; order not attempted')
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             row=await conn.fetchrow('SELECT * FROM public.member_redeem_keys WHERE key_hash=$1 FOR UPDATE',make_hash(payload.key))
@@ -104,11 +110,6 @@ async def order(payload:OrderBody,request:Request):
                 raise HTTPException(409,'Key is invalid, already used or order is processing')
             await conn.execute("UPDATE public.member_redeem_keys SET status='processing',invite_url=$2 WHERE id=$1",row['id'],payload.invite_url)
     # Provider credentials remain server-side; no provider order is retried automatically on error.
-    import httpx
-    base=os.getenv('DISCORD_MEMBER_API_BASE_URL','').rstrip('/')
-    provider_key=os.getenv('DISCORD_MEMBER_API_KEY','')
-    if not base.startswith('https://') or not provider_key:
-        raise HTTPException(503,'Provider API is not configured; order reserved for staff review')
     order_id='shoppex_'+str(row['id'])
     try:
         async with httpx.AsyncClient(timeout=25,follow_redirects=False) as client:
