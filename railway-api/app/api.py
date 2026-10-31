@@ -91,3 +91,53 @@ app.include_router(stock_router)
 
 from .member_keys import router as member_keys_router
 app.include_router(member_keys_router)
+
+
+# Trace actual ASGI response frames for signed Shoppex delivery endpoints.
+# This captures what the application hands to the HTTP server, not what
+# the remote Shoppex client ultimately receives.
+class ShoppexResponseWireTap:
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope.get('type') != 'http' or scope.get('path') not in (
+            '/resellers/members/order/online', '/resellers/members/order/offline'
+        ):
+            return await self.inner(scope, receive, send)
+        status = None
+        size = 0
+        chunks = 0
+        content_type = None
+        declared_length = None
+
+        async def traced_send(message):
+            nonlocal status, size, chunks, content_type, declared_length
+            if message['type'] == 'http.response.start':
+                status = message.get('status')
+                for name, value in message.get('headers', []):
+                    if name.lower() == b'content-type':
+                        content_type = value.decode('ascii', 'replace')
+                    elif name.lower() == b'content-length':
+                        declared_length = value.decode('ascii', 'replace')
+            elif message['type'] == 'http.response.body':
+                size += len(message.get('body', b''))
+                chunks += 1
+            await send(message)
+            if message['type'] == 'http.response.body' and not message.get('more_body', False):
+                import json
+                print(json.dumps({
+                    'event': 'SHOPPEX_ASGI_RESPONSE',
+                    'status': status,
+                    'path': scope.get('path'),
+                    'body_bytes_sent_to_server': size,
+                    'body_chunks': chunks,
+                    'content_type': content_type,
+                    'content_length': declared_length,
+                    'complete': True
+                }), flush=True)
+
+        await self.inner(scope, receive, traced_send)
+
+
+app = ShoppexResponseWireTap(app)
