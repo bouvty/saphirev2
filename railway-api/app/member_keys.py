@@ -185,7 +185,127 @@ async def redeem(payload:RedeemBody,request:Request):
 
 class OrderBody(BaseModel):
     key:str=Field(min_length=15,max_length=150)
-    discord_id:str=Field(pattern=r'^\d{15,22})
+    discord_id:str=Field(pattern=r'^\d{15,22}
+
+@router.post('/members/order')
+async def order(payload:OrderBody, request:Request):
+    """Convert an exclusively reserved Shoppex key into one Discorium order."""
+    require_internal(request)
+    import httpx
+    provider_token=os.getenv('DISCORIUM_API_KEY','').strip()
+    if not provider_token:
+        raise HTTPException(503,'Discorium provider key not configured')
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow(
+                'SELECT * FROM public.member_redeem_keys WHERE key_hash=$1 FOR UPDATE',
+                make_hash(payload.key))
+            if not row or row['redeemed_by']!=payload.discord_id or row['status']!='reserved':
+                raise HTTPException(409,'Key is not reserved to this user or already submitted')
+            if row['member_type'] not in ('online','offline') or not 1<=row['amount']<=100000:
+                raise HTTPException(409,'Invalid stored Shoppex member order')
+            # Stable ID is saved before sending and never regenerated on a retry.
+            order_id='dsc-'+secrets.token_hex(5)
+            await conn.execute(
+                "UPDATE public.member_redeem_keys SET status='processing',provider_order_id=$2 WHERE id=$1",
+                row['id'],order_id)
+    public_details={'id':row['id'],'type':row['member_type'],'amount':row['amount'],'order_id':order_id}
+    log.info('DISCORIUM_ORDER_STARTED %s',json.dumps(public_details))
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            response=await client.post(
+                'https://delivery.discorium.cc/api/v2/reseller/custom/delivery/members',
+                headers={'Authorization':'Bearer '+provider_token,
+                         'Content-Type':'application/json','Accept':'application/json'},
+                json={'order_id':order_id,'members_type':row['member_type'],
+                      'quantity':row['amount']})
+        data=response.json()
+        if response.status_code!=200 or not isinstance(data,dict) or data.get('success') is not True:
+            # A negative response might be definitive, but a network failure is not.
+            raise ValueError('Provider did not confirm success (HTTP %d)'%response.status_code)
+        if (data.get('order_id')!=order_id or data.get('members_type')!=row['member_type']
+            or type(data.get('quantity')) is not int or data['quantity']!=row['amount']
+            or not isinstance(data.get('key'),str) or not data['key'].strip()):
+            raise ValueError('Provider response order/type/quantity/key mismatch')
+    except Exception:
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE public.member_redeem_keys SET status='needs_review' WHERE id=$1 AND status='processing'",
+                row['id'])
+        log.exception('DISCORIUM_ORDER_UNCONFIRMED internal_id=%s order_id=%s',row['id'],order_id)
+        raise HTTPException(502,'Provider outcome unconfirmed; contact support. Do not retry.')
+    async with db.pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE public.member_redeem_keys SET status='completed',provider_key=$2,provider_response=$3 WHERE id=$1 AND status='processing'",
+            row['id'],data['key'],json.dumps({'success':True,'order_id':order_id,
+            'members_type':row['member_type'],'quantity':row['amount'],
+            'credits_remaining':data.get('credits_remaining')}))
+    log.info('DISCORIUM_ORDER_COMPLETED internal_id=%s order_id=%s type=%s quantity=%s provider_key_present=true',
+             row['id'],order_id,row['member_type'],row['amount'])
+    return {'success':True,'type':row['member_type'],'amount':row['amount'],
+            'order_id':order_id,'provider_key':data['key'],
+            'credits_remaining':data.get('credits_remaining')}
+)
+
+@router.post('/members/order')
+async def order(payload:OrderBody, request:Request):
+    """Convert an exclusively reserved Shoppex key into one Discorium order."""
+    require_internal(request)
+    import httpx
+    provider_token=os.getenv('DISCORIUM_API_KEY','').strip()
+    if not provider_token:
+        raise HTTPException(503,'Discorium provider key not configured')
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            row=await conn.fetchrow(
+                'SELECT * FROM public.member_redeem_keys WHERE key_hash=$1 FOR UPDATE',
+                make_hash(payload.key))
+            if not row or row['redeemed_by']!=payload.discord_id or row['status']!='reserved':
+                raise HTTPException(409,'Key is not reserved to this user or already submitted')
+            if row['member_type'] not in ('online','offline') or not 1<=row['amount']<=100000:
+                raise HTTPException(409,'Invalid stored Shoppex member order')
+            # Stable ID is saved before sending and never regenerated on a retry.
+            order_id='dsc-'+secrets.token_hex(5)
+            await conn.execute(
+                "UPDATE public.member_redeem_keys SET status='processing',provider_order_id=$2 WHERE id=$1",
+                row['id'],order_id)
+    public_details={'id':row['id'],'type':row['member_type'],'amount':row['amount'],'order_id':order_id}
+    log.info('DISCORIUM_ORDER_STARTED %s',json.dumps(public_details))
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            response=await client.post(
+                'https://delivery.discorium.cc/api/v2/reseller/custom/delivery/members',
+                headers={'Authorization':'Bearer '+provider_token,
+                         'Content-Type':'application/json','Accept':'application/json'},
+                json={'order_id':order_id,'members_type':row['member_type'],
+                      'quantity':row['amount']})
+        data=response.json()
+        if response.status_code!=200 or not isinstance(data,dict) or data.get('success') is not True:
+            # A negative response might be definitive, but a network failure is not.
+            raise ValueError('Provider did not confirm success (HTTP %d)'%response.status_code)
+        if (data.get('order_id')!=order_id or data.get('members_type')!=row['member_type']
+            or type(data.get('quantity')) is not int or data['quantity']!=row['amount']
+            or not isinstance(data.get('key'),str) or not data['key'].strip()):
+            raise ValueError('Provider response order/type/quantity/key mismatch')
+    except Exception:
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE public.member_redeem_keys SET status='needs_review' WHERE id=$1 AND status='processing'",
+                row['id'])
+        log.exception('DISCORIUM_ORDER_UNCONFIRMED internal_id=%s order_id=%s',row['id'],order_id)
+        raise HTTPException(502,'Provider outcome unconfirmed; contact support. Do not retry.')
+    async with db.pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE public.member_redeem_keys SET status='completed',provider_key=$2,provider_response=$3 WHERE id=$1 AND status='processing'",
+            row['id'],data['key'],json.dumps({'success':True,'order_id':order_id,
+            'members_type':row['member_type'],'quantity':row['amount'],
+            'credits_remaining':data.get('credits_remaining')}))
+    log.info('DISCORIUM_ORDER_COMPLETED internal_id=%s order_id=%s type=%s quantity=%s provider_key_present=true',
+             row['id'],order_id,row['member_type'],row['amount'])
+    return {'success':True,'type':row['member_type'],'amount':row['amount'],
+            'order_id':order_id,'provider_key':data['key'],
+            'credits_remaining':data.get('credits_remaining')}
+)
 
 @router.post('/members/order')
 async def order(payload:OrderBody, request:Request):
