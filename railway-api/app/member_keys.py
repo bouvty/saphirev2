@@ -163,8 +163,8 @@ async def shoppex_delivery(kind:str,request:Request):
                     return shoppex_key_response(kind, delivery_id, saved, True)
                 return {'status':'pending','message':'Existing fulfillment requires staff recovery'}
             key=generate_redeem_key()
-            await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext)
-                VALUES($1,$2,$3,$4,$5,$6,$7)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode())
+            await conn.execute("""INSERT INTO public.member_redeem_keys(key_hash,amount,member_type,shoppex_order_id,shoppex_product_id,fulfillment_id,key_ciphertext,key)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8)""",make_hash(key),amount,kind,order,product,delivery_id,cipher.encrypt(key.encode()).decode(),key)
     log.info('SHOPPEX_RESPONSE kind=%s status=200 delivery_ref=%s existing=false format=json content_type=application/json fields=deliver key_mask=%s body_bytes=%s',kind,hashlib.sha256(delivery_id.encode()).hexdigest()[:16],key[:5]+'…'+key[-4:],len(json.dumps({'deliver':key}).encode()))
     return shoppex_key_response(kind, delivery_id, key, False)
 
