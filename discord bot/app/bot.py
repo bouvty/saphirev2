@@ -1323,7 +1323,7 @@ class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem your Saphire key'):
             view=discord.ui.View(timeout=900)
             view.add_item(discord.ui.Button(label='Redeem',style=discord.ButtonStyle.link,
                 url='https://memberix.live/redeem'))
-            await inter.followup.send(view=cv2_layout(emb('Members order ready',details),view),ephemeral=True)
+            await inter.edit_original_response(view=cv2_layout(emb('Members order ready',details),view))
         except (httpx.RequestError,ValueError,KeyError,TypeError):
             log.exception('Saphire member redemption connection/response error for user %s',inter.user.id)
             await inter.followup.send(
