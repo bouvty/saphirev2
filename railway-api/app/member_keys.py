@@ -175,10 +175,18 @@ class RedeemBody(BaseModel):
 @router.post('/members/order/redeem')
 async def redeem(payload:RedeemBody,request:Request):
     require_internal(request)
+    # Do not consume a paid key if provider fulfillment cannot be configured.
+    if not os.getenv('DISCORIUM_API_KEY','').strip():
+        raise HTTPException(503,'Provider API is not configured')
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             row=await conn.fetchrow('SELECT * FROM public.member_redeem_keys WHERE key_hash=$1 FOR UPDATE',make_hash(payload.key))
-            if not row or row['redeemed'] or row['status']!='issued':
+            if not row:
+                return {'valid':False,'message':'Invalid key'}
+            if row['status']=='reserved' and row['redeemed_by']==payload.discord_id:
+                return {'valid':True,'key':payload.key,'amount':row['amount'],
+                        'type':row['member_type'],'created_at':row['created_at'].isoformat()}
+            if row['redeemed'] or row['status']!='issued':
                 return {'valid':False,'message':'Invalid or redeemed key'}
             await conn.execute("UPDATE public.member_redeem_keys SET redeemed=true,redeemed_at=now(),redeemed_by=$2,status='reserved' WHERE id=$1",row['id'],payload.discord_id)
     return {'valid':True,'key':payload.key,'amount':row['amount'],'type':row['member_type'],'created_at':row['created_at'].isoformat()}
