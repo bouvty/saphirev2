@@ -1274,101 +1274,60 @@ for obsolete_command in ('balance','bal','topup','addcredit','creditadd','topuph
     bot.remove_command(obsolete_command)
 
 
-class MemberInviteModal(discord.ui.Modal, title='Complete your member order'):
-    def __init__(self, key, user_id):
-        super().__init__(timeout=300)
-        self.key=key
-        self.user_id=user_id
-        self.invite=discord.ui.TextInput(label='Discord server invite',placeholder='https://discord.gg/example',max_length=250)
-        self.add_item(self.invite)
-
-    async def on_submit(self, inter):
-        if inter.user.id!=self.user_id:
-            return await inter.response.send_message('This redemption belongs to another user.',ephemeral=True)
-        try:
-            invite=discord_members.validate_invite(str(self.invite.value))
-        except ValueError as exc:
-            return await inter.response.send_message(str(exc),ephemeral=True)
-        await inter.response.defer(ephemeral=True,thinking=True)
-        secret=settings.saphire_v2_api_key
-        if not secret:
-            return await inter.followup.send('Redeem API is not configured. Contact staff.',ephemeral=True)
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=35) as client:
-                response=await client.post('https://saphire-python-api-production.up.railway.app/members/order',
-                    headers={'x-api-key':secret},json={'key':self.key,'discord_id':str(self.user_id),'invite_url':invite})
-            if response.status_code==200 and response.json().get('success') is True:
-                result=response.json()
-                return await inter.followup.send(view=cv2_layout(emb('Member order submitted',
-                    f'**Service:** {result["type"].title()} members\\n'
-                    f'**Quantity:** {int(result["amount"]):,}\\n'
-                    f'**Order ID:** \`{result["order_id"]}\`\\n'
-                    f'**Provider key:** \`{result["provider_key"]}\`')),ephemeral=True)
-            await inter.followup.send('The order could not be confirmed. Contact support before retrying; the key may require reconciliation.',ephemeral=True)
-        except Exception:
-            log.exception('Member order failed for user %s',self.user_id)
-            await inter.followup.send('Could not confirm the provider order. Contact support; do not retry automatically.',ephemeral=True)
-
-
-class MemberInviteNext(discord.ui.View):
-    def __init__(self,key,user_id):
-        super().__init__(timeout=900)
-        self.key=key
-        self.user_id=user_id
-
-    @discord.ui.button(label='Continue to server invite',style=discord.ButtonStyle.primary)
-    async def next(self,inter,button):
-        if inter.user.id!=self.user_id:
-            return await inter.response.send_message('This redemption belongs to another user.',ephemeral=True)
-        await inter.response.send_modal(MemberInviteModal(self.key,self.user_id))
-
-
 class MemberKeyRedeemModal(discord.ui.Modal, title='Redeem your Saphire key'):
     def __init__(self):
         super().__init__(timeout=300)
-        self.key_input=discord.ui.TextInput(label='Redemption key',placeholder='SAPH-...',max_length=150)
+        self.key_input=discord.ui.TextInput(label='Redemption key',placeholder='SAPH-XXXXX-XXXXX-XXXXX',max_length=150)
         self.add_item(self.key_input)
 
-    async def on_submit(self,inter):
+    async def on_submit(self, inter):
         await inter.response.defer(ephemeral=True,thinking=True)
-        key=str(self.key_input.value).strip()
+        key=str(self.key_input.value).strip().upper()
         secret=settings.saphire_v2_api_key
         if not secret:
-            return await inter.followup.send('Redeem API is not configured. Contact staff.',ephemeral=True)
+            return await inter.followup.send(
+                'Saphire API key is not configured in the bot. Contact staff.',ephemeral=True)
         import httpx
+        url='https://saphire-python-api-production.up.railway.app'
+        headers={'x-api-key':secret}
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                response=await client.post('https://saphire-python-api-production.up.railway.app/members/order/redeem',
-                    headers={'x-api-key':secret},json={'key':key,'discord_id':str(inter.user.id)})
-            if response.status_code!=200:
-                # Never log the submitted key or API credential.
-                log.error('Saphire member redemption API rejected request: HTTP %s, user_id=%s',
-                          response.status_code, inter.user.id)
-                if response.status_code in (401, 403):
+            async with httpx.AsyncClient(timeout=40) as client:
+                checked=await client.post(url+'/members/order/redeem',
+                    headers=headers,json={'key':key,'discord_id':str(inter.user.id)})
+                if checked.status_code!=200:
+                    log.error('Shoppex redemption request HTTP %s for user %s',checked.status_code,inter.user.id)
                     return await inter.followup.send(
-                        'Saphire redemption authentication failed (HTTP 401/403). Staff: set '
-                        'SAPHIRE_V2_API_KEY in the bot .env to the SAME value configured on Railway, '
-                        'then restart the bot.', ephemeral=True)
-                if response.status_code==422:
-                    return await inter.followup.send(
-                        'The redemption request was rejected as invalid (HTTP 422). Contact staff.',ephemeral=True)
+                        f'Could not validate key (HTTP {checked.status_code}). Contact staff.',ephemeral=True)
+                result=checked.json()
+                if result.get('valid') is not True:
+                    return await inter.followup.send('Invalid or already redeemed key.',ephemeral=True)
+                # Provider order is created server-side; bot must never call provider directly.
+                ordered=await client.post(url+'/members/order',
+                    headers=headers,json={'key':key,'discord_id':str(inter.user.id)})
+            if ordered.status_code!=200:
+                log.error('Discorium fulfillment HTTP %s for user %s',ordered.status_code,inter.user.id)
                 return await inter.followup.send(
-                    f'Redemption API returned HTTP {response.status_code}. Contact staff.',ephemeral=True)
-            result=response.json()
-            if result.get('valid') is not True:
-                return await inter.followup.send('Invalid key.',ephemeral=True)
-            when=result.get('created_at','Unknown')
-            details=(f'**Key:** \`{key}\`\\n**Status:** Valid • Claimed\\n'
-                     f'**Members:** {int(result["amount"]):,}\\n'
-                     f'**Type:** {result["type"].title()}\\n'
-                     f'**Created:** {when}\\n\\n'
-                     'Select **Continue to server invite** to complete your order.')
-            await inter.followup.send(view=cv2_layout(emb('Key verified',details),
-                MemberInviteNext(key,inter.user.id)),ephemeral=True)
-        except Exception:
-            log.exception('Member key check failed for user %s',inter.user.id)
-            await inter.followup.send('Could not verify this key. Contact support before trying again.',ephemeral=True)
+                    'Key claimed, but provider fulfillment was not confirmed. '
+                    'Contact support; do not attempt another order.',ephemeral=True)
+            data=ordered.json()
+            if data.get('success') is not True or not data.get('provider_key'):
+                return await inter.followup.send(
+                    'Provider confirmation was incomplete. Contact support.',ephemeral=True)
+            provider_key=str(data['provider_key'])
+            details=(f'**Status:** Order created\\n'
+                     f'**Type:** {str(data["type"]).title()} members\\n'
+                     f'**Quantity:** {int(data["amount"]):,}\\n'
+                     f'**Order ID:** \\x60{data["order_id"]}\\x60\\n'
+                     f'**Provider key:** \\x60{provider_key}\\x60\\n\\n'
+                     'Use the button below to redeem your provider key.')
+            view=discord.ui.View(timeout=900)
+            view.add_item(discord.ui.Button(label='Redeem',style=discord.ButtonStyle.link,
+                url='https://memberix.live/redeem'))
+            await inter.followup.send(view=cv2_layout(emb('Members order ready',details),view),ephemeral=True)
+        except (httpx.RequestError,ValueError,KeyError,TypeError):
+            log.exception('Saphire member redemption connection/response error for user %s',inter.user.id)
+            await inter.followup.send(
+                'Redemption outcome could not be verified. Contact support before retrying.',ephemeral=True)
 
 
 class MemberKeyRedeemView(discord.ui.View):
