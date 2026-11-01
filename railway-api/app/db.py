@@ -7,7 +7,8 @@ async def configure_connection(connection):
         await connection.set_type_codec(name,schema='pg_catalog',encoder=json.dumps,decoder=json.loads)
 async def start():
     global pool
-    pool=await asyncpg.create_pool(settings.database_url,min_size=1,max_size=8,init=configure_connection)
+    # Avoid cached prepared statements becoming invalid after live Supabase schema migrations.
+    pool=await asyncpg.create_pool(settings.database_url,min_size=1,max_size=8,init=configure_connection,statement_cache_size=0)
 async def stop():
     global pool
     if pool:
